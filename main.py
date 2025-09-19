@@ -6,6 +6,10 @@ model = YOLO("weights/yolov8n-seg.pt")
 tracker = sv.ByteTrack()
 PERSON_CLASS_ID = 0
 
+# Inference settings to improve mask quality (tighter polygons)
+RETINA_MASKS = True  # higher-resolution masks aligned to the original image
+IMG_SIZE = 960       # increase from default 640 for more detailed masks
+
 polygon_annotator = sv.PolygonAnnotator()
 label_annotator = sv.LabelAnnotator()  # unique ids
 trace_annotator = sv.TraceAnnotator()  # trace following detections
@@ -16,7 +20,7 @@ def callback(frame, idx):
     Per each frame in the source_path, returns annotations over frames to the target_path.
     """
 
-    results = model(frame)[0]
+    results = model.predict(frame, retina_masks=RETINA_MASKS, imgsz=IMG_SIZE)[0]
     detections = sv.Detections.from_ultralytics(results)
 
     # Keep only persons (COCO class id 0)
