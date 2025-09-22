@@ -13,7 +13,7 @@ Real-time pipeline to detect, track, and visualize multiple people with colored 
 - Snapshot export of first appearance per unique ID
 - Output video standardization with configurable resize strategy: `fit` | `fill` | `stretch`
 - File, webcam, or RTSP/HTTP stream input
-- Optional live display window
+- Optional live summary window
 
 ## Quickstart
 
@@ -53,10 +53,10 @@ Logs are written to the `logs/` directory. Snapshots are saved under `snapshots/
 
 ## Tracker selection (ByteTrack by default)
 
-This project supports both ByteTrack (default) and DeepSORT.
+This project supports both ByteTrack and DeepSORT.
 
 - To switch trackers, open `config.yaml` and set `tracker.type`.
-- Supported values: `bytetrack` (default) or `deepsort`.
+- Supported values: `bytetrack` or `deepsort`.
 
 Example `config.yaml` excerpt:
 
@@ -105,12 +105,10 @@ If the embedded players do not render on GitHub, use the direct links below:
 
 ## How it works
 
-`main.py` orchestrates video capture (file/webcam/stream), inference, tracking, annotation, optional display, and writing the output video. It also ensures directories exist and names logs/snapshots robustly for non-file sources.
-
-`utils.py` provides helpers for detection, tracking adapters, IoU/matching, annotation (polygons/labels/traces/summary overlay), event/snapshot logging, and output resizing.
+`main.py` is, essentially, the orchestrator for the entire repo. Here, extract recorded videos frame by frame and run inference via your designated model. This file calls `utils.py` file for helper methods for tracking, annotation, summary display, and logging. Furthermore, `utils.py` also enables proper video display options.
 
 ## Assumptions
-
+- Assuming we are using Python 3.12+. 
 - Python 3.12+ with listed libraries; YOLOv8n-seg.pt auto-downloads if missing; no internet for package installation during runtime. YOLOv8n-seg.pt model is auto-downloaded if missing.
 - Valid video sources; people as class ID 0; sufficient hardware for real-time.
 - A valid config.yaml file exists with paths, thresholds, and tracker settings; defaults provided if missing (e.g., detection confidence 0.10, IoU 0.10).
@@ -125,7 +123,7 @@ If the embedded players do not render on GitHub, use the direct links below:
 - Performance: FPS may drop on low-end hardware due to segmentation (YOLOv8-seg) and annotations; no dynamic optimization (e.g., skipping frames). Fixed output resolution (1280x720) may distort or pad inputs.
 - Customization Gaps: No integration with Roboflow for custom models (despite problem mention); hardcoded YOLO params (e.g., imgsz=640, max_det=300). Limited to people only; no multi-class support.
 - Output and Logging: Logs are JSONL (not CSV); snapshots only on first detection (no updates). No error recovery (e.g., video read failures crash the script). Overlay summary clips long ID lists with a scrollbar but doesn't scroll interactively.
-- Scaling: Struggles with high entity counts (>300 detections) due to YOLO limits; no distributed processing.
+- Scaling: Struggles with high entity counts (>300 detections) due to YOLO limits. Also no distributed processing.
 
 ## Design Decisions
 
@@ -137,4 +135,21 @@ If the embedded players do not render on GitHub, use the direct links below:
 
 ## Additional notes
 
-The pipeline logs per-frame tracking data and entry/exit events in JSONL format under the `logs/` directory. It also saves a snapshot of each unique ID on first detection under `snapshots/<video_stem>/`.
+- You are, by default, provided YOLOv8n-seg.pt, however, I should note, you can easily replace said model with whatever model of your choosing in `main.py`.
+- The pipeline logs per-frame tracking data and entry/exit events in JSONL format under the `logs/` directory. We also save a snapshot for each unique ID on first detection in the `snapshots/<video_stem>/` path.
+
+## How would I would improve upon this project
+
+Data acquisition and pre-processing is probably where most feature updates will occur in. Take this example, for creating curated videos for training examples for future models.
+
+1. At a high level, say you have many drones that are constantly streaming video footage and are offloading it to some datastore(s). We will assume this datastore is some blob storage, like AWS S3.
+
+2. We will assume there are n  such datastores. Typically, we want to perform some amount of pre-processing to these videos before we ran actually run the training loop. To do so on `n` datastores, we can utilize some distributed processing system, like Apache Spark, to process said videos. After processing the videos, we can delete them from the blob storage and  designate the processed videos to some other `m` datastores.
+
+3. Given these `m` datastores of cleaned data, we can then run training loops on another server. This server will be optimized for compute, with multiple GPUs.
+
+4. To efficiently feed data from the m datastores into the training server without downloading the entire dataset locally (minimizing storage costs and transfer times), we leverage on-demand streaming. We can prefetch data using PyTorch's DataLoader with prefetch_factor and num_workers > 1 for parallel batch loading. We can improve efficiency further by using tools like Apache Arrow, to read from optimized formats with some additional formatting on each item in the S3. This can be done from memory-mapped arrays to tensors, as an example.
+
+5. In the actual training scripts, accommodate for remote paths in the Dataset class. Furthermore, change Dataloader to support pipelined, multi-threaded data ingestion (parallelism) across GPUs via PyTorch's DistributedDataParallel.
+
+Later upgrades would revolve around automation of such processes and monitoring. That and real-time ingestion of streamed content.
