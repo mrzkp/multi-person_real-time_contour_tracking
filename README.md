@@ -33,9 +33,6 @@ Real-time pipeline to detect, track, and visualize multiple people with colored 
 
    - File input (default): set `paths.source_path` to a video path.
    - Webcam: set `paths.source_path: "0"` (or another index). Display is hard-coded off; to enable the live window, set `DISPLAY = True` in `main.py`.
-   - Stream: set `paths.source_path` to an `rtsp://` or `http(s)://` URL.
-
-   Note: Render and YOLO inference settings are hard-coded in `main.py` (constants near the top).
 
 1. Run
 
@@ -107,8 +104,15 @@ If the embedded players do not render on GitHub, use the direct links below:
 
 `main.py` is, essentially, the orchestrator for the entire repo. Here, extract recorded videos frame by frame and run inference via your designated model. This file calls `utils.py` file for helper methods for tracking, annotation, summary display, and logging. Furthermore, `utils.py` also enables proper video display options.
 
+Other features are listed below:
+
+- Uses Supervision annotators for polygons (contours), labels (ID overlays), and traces (trajectories); color by track ID for consistency.
+- IoU-based matching for aligning tracks to detections.
+- JSONL for frame-level tracks and events (enter/exit); timestamps derived from frame index/FPS for simplicity. Snapshots cropped to bbox on first sighting for minimal storage.
+- "Fit" (letterbox) with black padding to preserve aspect ratio in outputs, prioritizing visual fidelity over filling the frame.
+
 ## Assumptions
-- Assuming we are using Python 3.12+. 
+
 - Python 3.12+ with listed libraries; YOLOv8n-seg.pt auto-downloads if missing; no internet for package installation during runtime. YOLOv8n-seg.pt model is auto-downloaded if missing.
 - Valid video sources; people as class ID 0; sufficient hardware for real-time.
 - A valid config.yaml file exists with paths, thresholds, and tracker settings; defaults provided if missing (e.g., detection confidence 0.10, IoU 0.10).
@@ -125,13 +129,6 @@ If the embedded players do not render on GitHub, use the direct links below:
 - Output and Logging: Logs are JSONL (not CSV); snapshots only on first detection (no updates). No error recovery (e.g., video read failures crash the script). Overlay summary clips long ID lists with a scrollbar but doesn't scroll interactively.
 - Scaling: Struggles with high entity counts (>300 detections) due to YOLO limits. Also no distributed processing.
 
-## Design Decisions
-
-- Split into main.py (core loop, config loading, video I/O) and utils.py (helpers like detection, tracking, annotation) for readability and reusability; context managers for resource safety (e.g., video capture/release).
-- Uses Supervision annotators for polygons (contours), labels (ID overlays), and traces (trajectories); color by track ID for consistency. Summary overlay is dynamic (wraps IDs, EMA-smoothed FPS, optional scrollbar) but fixed-position ("top_left") to avoid occlusion.
-- Hardcoded YOLO params for speed (e.g., no half-precision by default); IoU-based matching for aligning tracks to detections.
-- JSONL for frame-level tracks and events (enter/exit); timestamps derived from frame index/FPS for simplicity. Snapshots cropped to bbox on first sighting for minimal storage.
-- "Fit" (letterbox) with black padding to preserve aspect ratio in outputs, prioritizing visual fidelity over filling the frame.
 
 ## Additional notes
 
@@ -140,7 +137,7 @@ If the embedded players do not render on GitHub, use the direct links below:
 
 ## How would I would improve upon this project
 
-Data acquisition and pre-processing is probably where most feature updates will occur in. Take this example, for creating curated videos for training examples for future models.
+Data acquisition and pre-processing is probably where most feature updates will occur in. Take this example, for creating curated videos for training examples for future projects.
 
 1. At a high level, say you have many drones that are constantly streaming video footage and are offloading it to some datastore(s). We will assume this datastore is some blob storage, like AWS S3.
 
