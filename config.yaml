@@ -1,0 +1,17 @@
+paths:
+  source_path: "videos/input/people-walking.mp4"
+  target_path: "videos/output/result-people.mp4"
+  weights_path: "weights/outputs/yolov8n-seg.pt"
+  logs_dir: "logs"
+  snapshots_dir: "snapshots"
+
+thresholds:
+  detection_conf: 0.20
+  match_iou: 0.40       # IoU threshold to match tracks to masks for contour coloring
+
+tracker:
+  type: ByteTrack       # Deepsort or bytetrack
+
+  track_thresh: 0.45    # Detection threshold for tracking
+  match_thresh: 0.65    # Association IoU threshold
+  track_buffer: 150     # How long to keep lost tracks (in frames)
