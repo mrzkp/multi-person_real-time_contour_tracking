@@ -11,8 +11,9 @@ import inspect
 from deep_sort_realtime.deepsort_tracker import DeepSort
 
 
-# ------------- Low-level helpers -------------
-
+"""
+LOW-LEVEL HELPERS
+"""
 
 def draw_summary_overlay(
     scene: np.ndarray,
@@ -25,6 +26,9 @@ def draw_summary_overlay(
     max_height_frac: float = 0.45,
     max_height_px_cap: Optional[int] = 220,
 ) -> np.ndarray:
+    """
+    Essentially building a summary that supports line wrapping.
+    """
     assert (
         isinstance(scene, np.ndarray) and scene.ndim == 3
     ), "scene must be an HxWxC image"
@@ -43,7 +47,8 @@ def draw_summary_overlay(
     h, w = scene.shape[:2]
     pad = int(margin)
     line_h = 22
-    # Build dynamic lines with ID list wrapping to fit within the box width
+
+
     font = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 0.6
     thickness = 2
@@ -51,13 +56,10 @@ def draw_summary_overlay(
     def text_width(s: str) -> int:
         return cv2.getTextSize(s, font, font_scale, thickness)[0][0]
 
-    # Prepare base lines (without IDs)
     pre_lines = [
         f"Tracked: {len(active_ids)}",
     ]
-    # Prepare wrapped ID lines
     id_text = "IDs: " + ", ".join(map(str, active_ids))
-    # We'll wrap based on available text width inside the box (reserve space for optional scrollbar)
     box_w = min(int(max_width), w - 2 * pad)
     sb_width = 6
     sb_margin = 4
@@ -73,12 +75,10 @@ def draw_summary_overlay(
         else:
             if cur:
                 id_lines.append(cur)
-            # If a single word is longer than content width, force split (rare for IDs)
+            # if a single word is longer than content width, force split
             if text_width(word) > content_w:
-                # naive hard split
                 tmp = word
                 while text_width(tmp) > content_w and len(tmp) > 1:
-                    # find a cut that fits
                     for cut in range(len(tmp) - 1, 0, -1):
                         if text_width(tmp[:cut]) <= content_w:
                             id_lines.append(tmp[:cut])
@@ -97,8 +97,7 @@ def draw_summary_overlay(
         f"FPS: {fps_cur:.1f}" if fps_cur is not None else "FPS: n/a",
     ]
     lines = pre_lines + id_lines + post_lines
-    # Determine max height and clamp if too many lines; show scroll indicator and bar
-    # Use a fixed pixel cap to keep the overlay size relatively consistent across resolutions.
+    # determine max height and clamp if too many lines; show scroll indicator and bar
     max_box_h_frac = min(int(max_height_frac * h), h - 2 * pad)
     if max_height_px_cap is not None:
         max_box_h = min(max_box_h_frac, max_height_px_cap)
@@ -137,7 +136,7 @@ def draw_summary_overlay(
         )
         y += line_h
 
-    # Draw a simple scrollbar if clipped
+    # scrollbar if clipped
     if clipped:
         groove_x1 = x2 - sb_margin - sb_width
         groove_x2 = x2 - sb_margin
@@ -216,7 +215,9 @@ def match_tracked_to_person(
     return keep_indices, keep_ids
 
 
-# ------------- Pipeline helpers -------------
+"""
+PIPELINE HELPER FUNCTIONS
+"""
 
 
 def timestamp(idx: int, fps: Optional[float]) -> Optional[float]:
@@ -291,7 +292,6 @@ def make_deepsort(tracker_cfg: Optional[Dict[str, Any]]) -> DeepSort:
         allowed = set(sig.parameters.keys())
     except Exception:
         allowed = set()
-    # Known params and their casters
     casters: Dict[str, Any] = {
         "max_age": int,
         "n_init": int,
@@ -369,17 +369,14 @@ def track(
         conf_list: List[Optional[float]] = []
         id_list: List[int] = []
         for t in tracks:
-            # Only keep confirmed tracks
             if hasattr(t, "is_confirmed") and not t.is_confirmed():
                 continue
-            # Get bbox as ltrb (xyxy)
             try:
                 l, top, r, b = t.to_ltrb()
             except TypeError:
-                # Older versions may have different signatures
                 l, top, r, b = t.to_ltrb
             xyxy_list.append([float(l), float(top), float(r), float(b)])
-            # Extract confidence if available
+            # extract confidence if available
             conf_val: Optional[float] = None
             if hasattr(t, "det_conf") and t.det_conf is not None:
                 try:
@@ -397,20 +394,17 @@ def track(
                 except Exception:
                     pass
             conf_list.append(conf_val)
-            # Track ID
             tid = getattr(t, "track_id", None)
             id_list.append(int(tid) if tid is not None else -1)
 
-        # Build Supervision Detections
+        # build Supervision Detections
         if len(xyxy_list) == 0:
             dets_empty = sv.Detections(xyxy=np.empty((0, 4), dtype=np.float32))
             dets_empty.tracker_id = np.empty((0,), dtype=int)
             return dets_empty
 
         dets = sv.Detections(xyxy=np.array(xyxy_list, dtype=np.float32))
-        # Assign tracker IDs
         dets.tracker_id = np.array(id_list, dtype=int)
-        # Assign confidences if any available
         if any(c is not None for c in conf_list):
             dets.confidence = np.array(
                 [c if c is not None else np.nan for c in conf_list], dtype=np.float32
@@ -426,7 +420,6 @@ def build_labels(tracked_detections: sv.Detections) -> List[str]:
     n = len(tracked_detections)
     tids = getattr(tracked_detections, "tracker_id", None)
 
-    # return placeholder labels of correct length if no detections, also print to terminal.
     if tids is None or (hasattr(tids, "__len__") and len(tids) != n):
         print("NO DETECTIONS.")
         return ["ID ?"] * n
@@ -437,7 +430,6 @@ def build_labels(tracked_detections: sv.Detections) -> List[str]:
             if tid is None:
                 labels.append("ID ?")
             else:
-                # handle nan values if present
                 if isinstance(tid, float) and np.isnan(tid):
                     labels.append("ID ?")
                 else:
@@ -654,9 +646,8 @@ def ensure_size(
     strategy: str = "fit",
 ) -> np.ndarray:
     """Resize frame to exact target resolution using letterbox padding (fit without distortion).
-
-    - Scales the image to fit entirely within the target size, preserving aspect ratio.
-    - Pads the remaining area with pad_color so the final frame is exactly (target_h, target_w).
+    Scales the image to fit entirely within the target size, preserving aspect ratio.
+    Pads the remaining area with pad_color so the final frame is exactly (target_h, target_w).
     """
     assert isinstance(frame, np.ndarray) and frame.ndim == 3, "frame must be HxWxC"
     assert isinstance(target_w, int) and target_w > 0, "target_w must be > 0"
@@ -666,21 +657,19 @@ def ensure_size(
 
     H, W = frame.shape[:2]
     if strategy_lc == "stretch":
-        # Direct resize to target size (distorts aspect ratio)
+        # direct resize to target size (distorts aspect ratio)
         return cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
 
     if strategy_lc == "fill":
-        # Scale to cover the target, then center-crop
         scale = max(target_w / W, target_h / H)
         interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR
         new_w = max(1, int(round(W * scale)))
         new_h = max(1, int(round(H * scale)))
         resized = cv2.resize(frame, (new_w, new_h), interpolation=interp)
-        # Center crop to target
         x_off = max(0, (new_w - target_w) // 2)
         y_off = max(0, (new_h - target_h) // 2)
         crop = resized[y_off : y_off + target_h, x_off : x_off + target_w]
-        # In rare rounding cases, pad if crop is slightly smaller
+        # in rare rounding cases, pad if crop is slightly smaller
         if crop.shape[0] != target_h or crop.shape[1] != target_w:
             canvas = np.full((target_h, target_w, 3), pad_color, dtype=frame.dtype)
             ch, cw = crop.shape[:2]
@@ -690,14 +679,12 @@ def ensure_size(
             return canvas
         return crop
 
-    # "fit" (letterbox)
     scale = min(target_w / W, target_h / H)
     interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR
     new_w = max(1, int(round(W * scale)))
     new_h = max(1, int(round(H * scale)))
     resized = cv2.resize(frame, (new_w, new_h), interpolation=interp)
 
-    # create canvas and paste centered
     canvas = np.full((target_h, target_w, 3), pad_color, dtype=frame.dtype)
     x_off = (target_w - new_w) // 2
     y_off = (target_h - new_h) // 2
